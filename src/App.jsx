@@ -154,7 +154,7 @@ function App() {
             margin: 0, 
             color: 'var(--text)' 
           }}>
-            Stepie
+            Stepie Tracker
           </h1>
           
           {/* Fix gear icon styling */}
