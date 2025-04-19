@@ -1,4 +1,4 @@
-// Modified WeightChart.jsx with updated colors
+// Improved WeightChart.jsx with integer weights
 import React from 'react';
 import { Line } from 'react-chartjs-2';
 import {
@@ -32,7 +32,9 @@ function WeightChart({ weightEntries = [], targetWeight }) {
   const labels = sortedEntries.map(entry =>
     new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   );
-  const dataPoints = sortedEntries.map(entry => entry.weight);
+  
+  // #5 Fix: Make sure all weights are integers
+  const dataPoints = sortedEntries.map(entry => Math.round(entry.weight));
 
   // Find min/max for better y-axis display
   const minWeight = dataPoints.length ? Math.min(...dataPoints) : 150;
@@ -79,13 +81,15 @@ function WeightChart({ weightEntries = [], targetWeight }) {
           font: {
             size: 12
           },
+          // #5 Fix: Display integers only (no decimals)
+          stepSize: 5,
           callback: function(value) {
-            return value + ' lbs'; // Add units
+            return Math.round(value) + ' lbs'; // Ensure integer display
           }
         },
         // Better min/max with buffer to avoid cutting off points
-        min: Math.max(0, minWeight - weightBuffer),
-        max: maxWeight + weightBuffer,
+        min: Math.floor(Math.max(0, minWeight - weightBuffer)),
+        max: Math.ceil(maxWeight + weightBuffer),
         title: {
           display: true,
           text: 'Weight (lbs)',
@@ -138,7 +142,8 @@ function WeightChart({ weightEntries = [], targetWeight }) {
         displayColors: false,
         callbacks: {
           label: function(context) {
-            return `Weight: ${context.parsed.y} lbs`;
+            // #5 Fix: Display integer weight in tooltip
+            return `Weight: ${Math.round(context.parsed.y)} lbs`;
           },
           title: function(context) {
             return context[0].label;
@@ -156,7 +161,8 @@ function WeightChart({ weightEntries = [], targetWeight }) {
               borderWidth: 2,
               borderDash: [6, 6],
               label: {
-                content: `Target: ${targetWeight} lbs`,
+                // #5 Fix: Display integer target weight
+                content: `Target: ${Math.round(targetWeight)} lbs`,
                 position: 'end',
                 enabled: true,
                 backgroundColor: '#FF4500',

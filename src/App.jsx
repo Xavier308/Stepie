@@ -1,4 +1,4 @@
-// App.jsx with fixes
+// App.jsx with GitHub-style heatmap
 import React, { useState, useEffect } from 'react';
 import WeightChart from './components/WeightChart';
 import apiService from './services/apiService';
@@ -43,8 +43,8 @@ function App() {
       // Calculate weight with some random variation to make it more realistic
       const progress = 1 - (i / days);
       const exactWeight = startWeight - (weightChange * progress);
-      const randomVariation = (Math.random() * 2 - 1) * 1.5; // Random variation of ±1.5 lbs
-      const weight = Math.round((exactWeight + randomVariation) * 10) / 10;
+      // Round to integers instead of one decimal place
+      const weight = Math.round(exactWeight + (Math.random() * 2 - 1) * 1.5);
       
       data.push({
         date: entryDate.toISOString().slice(0, 10),
@@ -96,7 +96,7 @@ function App() {
     try {
       setError(null);
       const newEntry = {
-        weight: parseFloat(newWeight),
+        weight: parseInt(newWeight, 10), // Convert to integer
         date: newDate,
       };
       
@@ -110,7 +110,8 @@ function App() {
     }
   };
 
-  // Generate months and proper column counts for heatmap
+  // Generate GitHub-style heatmap data
+  // Month column distribution following GitHub's pattern (total 52-53 columns)
   const monthData = [
     { name: 'Jan', columns: 4 },
     { name: 'Feb', columns: 4 },
@@ -126,7 +127,8 @@ function App() {
     { name: 'Dec', columns: 5 }
   ];
 
-  const weekdays = ['Mon', 'Wed', 'Fri'];
+  // Day labels with empty slots between main labels (GitHub style)
+  const weekdayLabels = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
 
   return (
     <div style={{ 
@@ -157,7 +159,6 @@ function App() {
             Stepie Tracker
           </h1>
           
-          {/* Fix gear icon styling */}
           <button style={{ 
             backgroundColor: 'transparent', 
             color: 'var(--text)', 
@@ -196,13 +197,13 @@ function App() {
         {/* Main Content */}
         {!loading && (
           <main style={{ padding: '1rem 0' }}>
-            {/* Weight Chart - Increased height */}
+            {/* Weight Chart - Increased height and top padding */}
             <div style={{ marginBottom: '2rem' }}>
               <div style={{ 
                 display: 'flex', 
                 justifyContent: 'space-between', 
                 alignItems: 'center', 
-                marginBottom: '0.75rem' 
+                marginBottom: '1rem'
               }}>
                 <h2 style={{ 
                   fontSize: '1.25rem', 
@@ -225,7 +226,7 @@ function App() {
               </div>
               
               <div style={{ 
-                height: '400px', // Increased height
+                height: '400px',
                 width: '100%', 
                 backgroundColor: 'white', 
                 borderRadius: '0.5rem', 
@@ -233,12 +234,16 @@ function App() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)'
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+                padding: '20px 10px 10px 10px' // Added more padding on top
               }}>
                 {weightEntries.length > 0 ? (
                   <WeightChart 
-                    weightEntries={weightEntries} 
-                    targetWeight={goals.targetWeight || 175} // Default target if not set
+                    weightEntries={weightEntries.map(entry => ({
+                      ...entry,
+                      weight: Math.round(entry.weight) // Round all weights to integers
+                    }))} 
+                    targetWeight={goals.targetWeight ? Math.round(goals.targetWeight) : 175} // Round target weight too
                   />
                 ) : (
                   <p style={{ color: 'var(--text-secondary)' }}>
@@ -248,15 +253,15 @@ function App() {
               </div>
             </div>
             
-            {/* Activity Heatmap - Adjusted to match chart width */}
+            {/* GitHub-style Activity Heatmap */}
             <div style={{ marginBottom: '2rem' }}>
               <h2 style={{ 
                 fontSize: '1.25rem', 
                 fontWeight: '600', 
-                marginBottom: '0.75rem',
+                marginBottom: '1.25rem', // Increased space
                 color: 'var(--text)',
                 margin: 0,
-                marginBottom: '0.75rem'
+                marginBottom: '1.25rem'
               }}>
                 Activity Heatmap
               </h2>
@@ -265,116 +270,121 @@ function App() {
                 backgroundColor: 'white', 
                 borderRadius: '0.5rem',
                 boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-                padding: '1rem'
+                padding: '1rem',
+                marginBottom: '1rem', // Space between heatmap and button row
+                overflow: 'hidden'
               }}>
-                <div style={{ overflowX: 'auto' }}>
+                {/* Month headers */}
+                <div style={{ display: 'flex' }}>
+                  <div style={{ width: '35px' }}></div> {/* Space for weekday labels */}
+                  <div style={{ display: 'flex', width: 'calc(100% - 35px)' }}>
+                    {monthData.map((month, idx) => (
+                      <div key={idx} style={{ 
+                        textAlign: 'center',
+                        width: `${(month.columns / 53) * 100}%`, // Width proportional to column count
+                        color: 'var(--text-secondary)',
+                        fontSize: '0.75rem',
+                        fontWeight: '500'
+                      }}>
+                        {month.name}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                <div style={{ display: 'flex', marginTop: '4px' }}>
+                  {/* Day labels - GitHub style with 7 rows */}
                   <div style={{ 
-                    display: 'flex', 
-                    minWidth: 'max-content',
-                    paddingBottom: '0.5rem'
+                    width: '35px', 
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    paddingRight: '4px'
                   }}>
-                    {/* Month headers */}
-                    <div style={{ width: '40px' }}></div> {/* Space for weekday labels */}
-                    <div style={{ display: 'flex' }}>
-                      {monthData.map((month, idx) => (
-                        <div key={idx} style={{ 
-                          textAlign: 'center',
-                          minWidth: `${month.columns * 30}px`,
+                    {weekdayLabels.map((day, index) => (
+                      <div 
+                        key={index} 
+                        style={{ 
+                          height: '13px', // Smaller, GitHub-like squares
+                          fontSize: '0.7rem',
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'flex-end',
                           color: 'var(--text-secondary)',
-                          fontSize: '0.75rem',
-                          fontWeight: '500'
-                        }}>
-                          {month.name}
-                        </div>
-                      ))}
-                    </div>
+                          marginTop: index === 0 ? '0' : '2px', // Space between rows
+                          marginBottom: index === 6 ? '0' : '2px'
+                        }}
+                      >
+                        {day}
+                      </div>
+                    ))}
                   </div>
                   
-                  <div style={{ display: 'flex' }}>
-                    {/* Day labels */}
-                    <div style={{ 
-                      width: '40px', 
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-around',
-                      paddingRight: '0.5rem'
-                    }}>
-                      {weekdays.map((day, index) => (
-                        <div 
-                          key={index} 
-                          style={{ 
-                            height: '30px', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'flex-end',
-                            color: 'var(--text-secondary)',
-                            fontSize: '0.75rem'
-                          }}
-                        >
-                          {day}
-                        </div>
-                      ))}
-                    </div>
-                    
-                    {/* Month columns with correct column counts */}
-                    <div style={{ display: 'flex' }}>
-                      {monthData.map((month, monthIdx) => (
-                        <div key={monthIdx} style={{ display: 'flex' }}>
-                          {[...Array(month.columns)].map((_, colIdx) => (
-                            <div key={colIdx} style={{ 
-                              display: 'flex', 
-                              flexDirection: 'column',
-                              gap: '6px',
-                              padding: '0 2px'
-                            }}>
-                              {weekdays.map((_, rowIdx) => (
-                                <div 
-                                  key={rowIdx} 
-                                  style={{
-                                    width: '24px', 
-                                    height: '24px', 
-                                    borderRadius: '4px',
-                                    backgroundColor: Math.random() > 0.3 
-                                      ? `rgba(255, 160, 0, ${Math.random() * 0.8 + 0.2})` 
-                                      : '#EEEEEE'
-                                  }}
-                                />
-                              ))}
-                            </div>
+                  {/* GitHub-style heatmap grid */}
+                  <div style={{ display: 'flex', width: 'calc(100% - 35px)' }}>
+                    {/* Create 53 columns (52-53 weeks in a year) */}
+                    {monthData.flatMap((month, monthIdx) => 
+                      [...Array(month.columns)].map((_, colIdx) => (
+                        <div key={`${monthIdx}-${colIdx}`} style={{ 
+                          display: 'flex', 
+                          flexDirection: 'column',
+                          gap: '2px',
+                          padding: '0 1px',
+                          width: `${(1 / 53) * 100}%` // Even width for all 53 columns
+                        }}>
+                          {/* 7 rows for each day of the week */}
+                          {[...Array(7)].map((_, rowIdx) => (
+                            <div 
+                              key={rowIdx} 
+                              style={{
+                                width: '100%', 
+                                paddingBottom: '100%', // Square aspect ratio
+                                position: 'relative',
+                                borderRadius: '2px',
+                                backgroundColor: Math.random() > 0.3 
+                                  ? `rgba(255, 160, 0, ${Math.random() * 0.8 + 0.2})` 
+                                  : '#EEEEEE',
+                                marginTop: rowIdx === 0 ? '0' : '2px', // Space between rows
+                                marginBottom: rowIdx === 6 ? '0' : '2px'
+                              }}
+                            />
                           ))}
                         </div>
-                      ))}
-                    </div>
+                      ))
+                    )}
                   </div>
+                </div>
+              </div>
+              
+              {/* Add Button Row - Positioned below the heatmap, within app boundaries */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'flex-end',
+                marginBottom: '1.5rem'
+              }}>
+                <div 
+                  style={{ 
+                    width: '56px', 
+                    height: '56px', 
+                    borderRadius: '50%', 
+                    backgroundColor: 'var(--primary)', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    boxShadow: '0 4px 10px rgba(0, 0, 0, 0.15)',
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => setShowAddModal(true)}
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
                 </div>
               </div>
             </div>
           </main>
         )}
-      </div>
-      
-      {/* Floating Action Button */}
-      <div 
-        style={{ 
-          position: 'fixed', 
-          right: '1.5rem', 
-          bottom: '1.5rem', 
-          width: '56px', 
-          height: '56px', 
-          borderRadius: '50%', 
-          backgroundColor: 'var(--primary)', 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'center',
-          boxShadow: '0 4px 10px rgba(0, 0, 0, 0.15)',
-          cursor: 'pointer'
-        }}
-        onClick={() => setShowAddModal(true)}
-      >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19"></line>
-          <line x1="5" y1="12" x2="19" y2="12"></line>
-        </svg>
       </div>
       
       {/* Add Modal */}
