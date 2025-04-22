@@ -15,17 +15,41 @@ A weight tracking application that helps users monitor their progress toward wei
 
 ```
 stepie-app/
-├── src/                  # React front-end code
-│   ├── components/       # React components
-│   ├── services/         # API service for backend communication  
-│   └── ...               # Other frontend files
-├── server/               # Express.js backend
-│   ├── server.js         # Main server code
-│   ├── database-utils.js # Database utility functions
-│   ├── database-browser.js # Database browser interface
-│   ├── migrate-from-nobackend.js # Migration script
-│   └── stepie.db         # SQLite database file (created on first run)
-└── ...                   # Configuration files
+├── index.html
+├── package.json
+├── README.md
+├── vite.config.js
+├── eslint.config.js
+├── public/
+│   ├── vite.svg
+│   └── favicon.png (referenced in index.html)
+├── src/
+│   ├── main.jsx
+│   ├── App.jsx
+│   ├── App.css
+│   ├── index.css
+│   ├── assets/
+│   │   └── react.svg
+│   ├── components/
+│   │   ├── ActivityHeatmap.jsx
+│   │   ├── AddEntryModal.jsx
+│   │   ├── DietEntryForm.jsx
+│   │   ├── GoalManager.jsx
+│   │   ├── InitialSetupFlow.jsx
+│   │   ├── SettingsModal.jsx
+│   │   ├── WeightChart.jsx
+│   │   ├── WeightForm.jsx
+│   │   ├── WeightList.jsx
+│   │   ├── WeightTracker.jsx
+│   │   └── WorkoutEntryForm.jsx
+│   └── services/
+│       └── apiService.js
+└── server/ (referenced in README and package.json)
+    ├── server.js
+    ├── database-utils.js
+    ├── database-browser.js
+    ├── migrate-from-nobackend.js
+    └── stepie.db (SQLite database file, created on first run)
 ```
 
 ## 🚀 Getting Started
