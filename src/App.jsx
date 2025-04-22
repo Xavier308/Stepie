@@ -1,7 +1,8 @@
-// App.jsx with GitHub-style heatmap
+// App.jsx with proper database initialization
 import React, { useState, useEffect } from 'react';
 import WeightChart from './components/WeightChart';
 import apiService from './services/apiService';
+import InitialSetupFlow from './components/InitialSetupFlow';
 import './index.css'; 
 
 function App() {
@@ -20,40 +21,7 @@ function App() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newWeight, setNewWeight] = useState('');
   const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10));
-
-  // Use dummy data if no entries are available
-  useEffect(() => {
-    if (weightEntries.length === 0 && !loading) {
-      // Generate sample data showing weight loss from 210 to 185 over 3 months
-      const dummyData = generateDummyWeightData(210, 185, 90); // 90 days = ~3 months
-      setWeightEntries(dummyData);
-    }
-  }, [weightEntries, loading]);
-
-  // Generate dummy weight data
-  const generateDummyWeightData = (startWeight, endWeight, days) => {
-    const data = [];
-    const weightChange = startWeight - endWeight;
-    const todayDate = new Date();
-    
-    for (let i = days; i >= 0; i -= 3) { // Every 3 days
-      const entryDate = new Date();
-      entryDate.setDate(todayDate.getDate() - i);
-      
-      // Calculate weight with some random variation to make it more realistic
-      const progress = 1 - (i / days);
-      const exactWeight = startWeight - (weightChange * progress);
-      // Round to integers instead of one decimal place
-      const weight = Math.round(exactWeight + (Math.random() * 2 - 1) * 1.5);
-      
-      data.push({
-        date: entryDate.toISOString().slice(0, 10),
-        weight: weight
-      });
-    }
-    
-    return data;
-  };
+  const [needsInitialSetup, setNeedsInitialSetup] = useState(false);
 
   // Fetch data on component mount
   useEffect(() => {
@@ -77,6 +45,13 @@ function App() {
         }));
         setGoalRecordId(fetchedGoalData.id);
       }
+      
+      // Check if we need initial setup
+      // Consider setup needed if there are no weight entries
+      if (fetchedWeightData.length === 0) {
+        setNeedsInitialSetup(true);
+      }
+      
     } catch (err) {
       console.error("Failed to fetch initial data:", err);
       const errorMsg = err.response?.data?.message || err.message || "Could not load data.";
@@ -96,7 +71,7 @@ function App() {
     try {
       setError(null);
       const newEntry = {
-        weight: parseInt(newWeight, 10), // Convert to integer
+        weight: parseFloat(newWeight),
         date: newDate,
       };
       
@@ -110,8 +85,14 @@ function App() {
     }
   };
 
-  // Generate GitHub-style heatmap data
-  // Month column distribution following GitHub's pattern (total 52-53 columns)
+  // Handle completion of initial setup
+  const handleSetupComplete = () => {
+    setNeedsInitialSetup(false);
+    fetchData(); // Refresh data after setup
+  };
+
+  // Generate GitHub-style heatmap data (simplified)
+  // Month column distribution following GitHub's pattern
   const monthData = [
     { name: 'Jan', columns: 4 },
     { name: 'Feb', columns: 4 },
@@ -129,6 +110,11 @@ function App() {
 
   // Day labels with empty slots between main labels (GitHub style)
   const weekdayLabels = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
+
+  // If we need initial setup, show the setup flow instead of the main app
+  if (needsInitialSetup && !loading) {
+    return <InitialSetupFlow onComplete={handleSetupComplete} />;
+  }
 
   return (
     <div style={{ 
@@ -239,11 +225,8 @@ function App() {
               }}>
                 {weightEntries.length > 0 ? (
                   <WeightChart 
-                    weightEntries={weightEntries.map(entry => ({
-                      ...entry,
-                      weight: Math.round(entry.weight) // Round all weights to integers
-                    }))} 
-                    targetWeight={goals.targetWeight ? Math.round(goals.targetWeight) : 175} // Round target weight too
+                    weightEntries={weightEntries} 
+                    targetWeight={goals.targetWeight}
                   />
                 ) : (
                   <p style={{ color: 'var(--text-secondary)' }}>
@@ -261,7 +244,6 @@ function App() {
                 marginBottom: '1.25rem', // Increased space
                 color: 'var(--text)',
                 margin: 0,
-                marginBottom: '1.25rem'
               }}>
                 Activity Heatmap
               </h2>
@@ -341,7 +323,7 @@ function App() {
                                 paddingBottom: '100%', // Square aspect ratio
                                 position: 'relative',
                                 borderRadius: '2px',
-                                backgroundColor: Math.random() > 0.3 
+                                backgroundColor: Math.random() > 0.7 
                                   ? `rgba(255, 160, 0, ${Math.random() * 0.8 + 0.2})` 
                                   : '#EEEEEE',
                                 marginTop: rowIdx === 0 ? '0' : '2px', // Space between rows

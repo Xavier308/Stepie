@@ -1,355 +1,326 @@
-// server.js - Express server with SQLite database and integrated database browser
+// server.js - Express server for Stepie app
 const express = require('express');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
-const { open } = require('sqlite');
 const path = require('path');
-const createDatabaseBrowser = require('./database-browser');
+const fs = require('fs');
+const { initDatabase } = require('./database-utils');
 
+// Create the app
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Database path
+const DB_PATH = path.join(__dirname, 'stepie.db');
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// Database connection
-let db;
-
-// Initialize database
-async function initializeDatabase() {
-  try {
-    // Open SQLite database (creates it if it doesn't exist)
-    db = await open({
-      filename: path.resolve(__dirname, 'stepie.db'),
-      driver: sqlite3.Database
-    });
-
-    console.log('Connected to SQLite database');
-
-    // Create tables if they don't exist
-    await db.exec(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL,
-        email TEXT UNIQUE,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS weight_entries (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        weight REAL NOT NULL,
-        date TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users (id)
-      );
-
-      CREATE TABLE IF NOT EXISTS user_goals (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        targetWeight REAL,
-        stepSize INTEGER DEFAULT 5,
-        weight_unit TEXT DEFAULT 'lbs',
-        additionalGoals TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users (id)
-      );
-    `);
-
-    // Insert default user if none exists (for single-user operation initially)
-    const userExists = await db.get('SELECT id FROM users LIMIT 1');
-    if (!userExists) {
-      await db.run('INSERT INTO users (username) VALUES (?)', ['default_user']);
-      console.log('Created default user');
-    }
-  } catch (err) {
-    console.error('Database initialization error:', err);
-  }
+// Serve static files from the React app build directory in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../dist')));
 }
 
-// ============== Weight Entries API ==============
-
-// Get all weight entries for a user
-app.get('/api/weight_entries', async (req, res) => {
-  try {
-    const userId = req.query.user_id || 1; // Default to user 1 for now
-    const entries = await db.all(
-      'SELECT * FROM weight_entries WHERE user_id = ? ORDER BY date ASC',
-      [userId]
-    );
-    res.json(entries);
-  } catch (err) {
-    console.error('Error fetching weight entries:', err);
-    res.status(500).json({ error: 'Failed to fetch weight entries' });
+// Helper to initialize DB connection
+function getDb() {
+  // Create database file if it doesn't exist
+  if (!fs.existsSync(DB_PATH)) {
+    console.log('Database file not found. Initializing...');
+    initDatabase();
   }
+  
+  return new sqlite3.Database(DB_PATH, (err) => {
+    if (err) {
+      console.error('Error connecting to database:', err.message);
+    }
+  });
+}
+
+// API Routes
+// ==========
+
+// Weight Entries
+// -------------
+// Get all weight entries for a user
+app.get('/api/weight_entries', (req, res) => {
+  const userId = req.query.user_id || 1; // Default to user 1 if none provided
+  
+  const db = getDb();
+  db.all(
+    'SELECT * FROM weight_entries WHERE user_id = ? ORDER BY date ASC',
+    [userId],
+    (err, rows) => {
+      if (err) {
+        console.error('Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json(rows);
+    }
+  );
+  db.close();
 });
 
 // Add a new weight entry
-app.post('/api/weight_entries', async (req, res) => {
-  try {
-    const { weight, date } = req.body;
-    const userId = req.body.user_id || 1; // Default to user 1 for now
-    
-    // Validate required fields
-    if (!weight || !date) {
-      return res.status(400).json({ error: 'Weight and date are required' });
-    }
-
-    // Current timestamp for created_at and updated_at
-    const now = new Date().toISOString();
-    
-    const result = await db.run(
-      'INSERT INTO weight_entries (user_id, weight, date, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-      [userId, weight, date, now, now]
-    );
-
-    res.status(201).json({
-      id: result.lastID,
-      user_id: userId,
-      weight,
-      date,
-      created_at: now,
-      updated_at: now
-    });
-  } catch (err) {
-    console.error('Error adding weight entry:', err);
-    res.status(500).json({ error: 'Failed to add weight entry' });
+app.post('/api/weight_entries', (req, res) => {
+  const { user_id = 1, weight, date } = req.body;
+  
+  if (!weight || !date) {
+    return res.status(400).json({ error: 'Weight and date are required' });
   }
+  
+  const db = getDb();
+  db.run(
+    'INSERT INTO weight_entries (user_id, weight, date) VALUES (?, ?, ?)',
+    [user_id, weight, date],
+    function(err) {
+      if (err) {
+        console.error('Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      
+      // Return the created entry with its ID
+      db.get(
+        'SELECT * FROM weight_entries WHERE id = ?',
+        [this.lastID],
+        (err, row) => {
+          if (err) {
+            console.error('Database error:', err.message);
+            res.status(500).json({ error: err.message });
+            return;
+          }
+          res.status(201).json(row);
+        }
+      );
+    }
+  );
 });
 
 // Update a weight entry
-app.put('/api/weight_entries/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { weight, date } = req.body;
-    
-    // Validate required fields
-    if (!weight && !date) {
-      return res.status(400).json({ error: 'At least one field (weight or date) is required' });
-    }
-
-    // Current timestamp for updated_at
-    const now = new Date().toISOString();
-    
-    // Get current entry to update only provided fields
-    const currentEntry = await db.get('SELECT * FROM weight_entries WHERE id = ?', [id]);
-    if (!currentEntry) {
-      return res.status(404).json({ error: 'Weight entry not found' });
-    }
-
-    // Update only the fields that were provided
-    const updateWeight = weight !== undefined ? weight : currentEntry.weight;
-    const updateDate = date !== undefined ? date : currentEntry.date;
-    
-    await db.run(
-      'UPDATE weight_entries SET weight = ?, date = ?, updated_at = ? WHERE id = ?',
-      [updateWeight, updateDate, now, id]
-    );
-
-    // Get the updated entry
-    const updatedEntry = await db.get('SELECT * FROM weight_entries WHERE id = ?', [id]);
-    res.json(updatedEntry);
-  } catch (err) {
-    console.error('Error updating weight entry:', err);
-    res.status(500).json({ error: 'Failed to update weight entry' });
+app.put('/api/weight_entries/:id', (req, res) => {
+  const { id } = req.params;
+  const { weight, date } = req.body;
+  
+  if (!weight || !date) {
+    return res.status(400).json({ error: 'Weight and date are required' });
   }
+  
+  const db = getDb();
+  db.run(
+    'UPDATE weight_entries SET weight = ?, date = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+    [weight, date, id],
+    function(err) {
+      if (err) {
+        console.error('Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      
+      if (this.changes === 0) {
+        res.status(404).json({ error: 'Entry not found' });
+        return;
+      }
+      
+      db.get(
+        'SELECT * FROM weight_entries WHERE id = ?',
+        [id],
+        (err, row) => {
+          if (err) {
+            console.error('Database error:', err.message);
+            res.status(500).json({ error: err.message });
+            return;
+          }
+          res.json(row);
+        }
+      );
+    }
+  );
 });
 
 // Delete a weight entry
-app.delete('/api/weight_entries/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    // Check if entry exists
-    const entry = await db.get('SELECT id FROM weight_entries WHERE id = ?', [id]);
-    if (!entry) {
-      return res.status(404).json({ error: 'Weight entry not found' });
-    }
-    
-    await db.run('DELETE FROM weight_entries WHERE id = ?', [id]);
-    res.status(204).send();
-  } catch (err) {
-    console.error('Error deleting weight entry:', err);
-    res.status(500).json({ error: 'Failed to delete weight entry' });
-  }
-});
-
-// ============== User Goals API ==============
-
-// Get goals for a user
-app.get('/api/user_goals', async (req, res) => {
-  try {
-    const userId = req.query.user_id || 1; // Default to user 1 for now
-    
-    // Try to find existing goals
-    let goals = await db.get('SELECT * FROM user_goals WHERE user_id = ?', [userId]);
-    
-    if (!goals) {
-      // No goals found, return empty
-      return res.json(null);
-    }
-    
-    // Parse additionalGoals JSON if it exists
-    if (goals.additionalGoals) {
-      try {
-        goals.additionalGoals = JSON.parse(goals.additionalGoals);
-      } catch (e) {
-        console.warn(`Could not parse additionalGoals for user ${userId}`);
-        goals.additionalGoals = [];
+app.delete('/api/weight_entries/:id', (req, res) => {
+  const { id } = req.params;
+  
+  const db = getDb();
+  db.run(
+    'DELETE FROM weight_entries WHERE id = ?',
+    [id],
+    function(err) {
+      if (err) {
+        console.error('Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
       }
-    } else {
-      goals.additionalGoals = [];
+      
+      if (this.changes === 0) {
+        res.status(404).json({ error: 'Entry not found' });
+        return;
+      }
+      
+      res.status(204).send();
     }
-    
-    res.json(goals);
-  } catch (err) {
-    console.error('Error fetching goals:', err);
-    res.status(500).json({ error: 'Failed to fetch goals' });
-  }
+  );
 });
 
-// Create or update goals
-app.post('/api/user_goals', async (req, res) => {
-  try {
-    const userId = req.body.user_id || 1; // Default to user 1 for now
-    const { targetWeight, stepSize, weight_unit, additionalGoals } = req.body;
-    
-    // Current timestamp
-    const now = new Date().toISOString();
-    
-    // Check if goals already exist for user
-    const existingGoals = await db.get('SELECT id FROM user_goals WHERE user_id = ?', [userId]);
-    
-    // Prepare additionalGoals as JSON string
-    const additionalGoalsJson = additionalGoals ? JSON.stringify(additionalGoals) : null;
-    
-    if (existingGoals) {
-      // Update existing goals
-      await db.run(
-        `UPDATE user_goals 
-         SET targetWeight = ?, stepSize = ?, weight_unit = ?, additionalGoals = ?, updated_at = ? 
-         WHERE user_id = ?`,
-        [targetWeight, stepSize || 5, weight_unit || 'lbs', additionalGoalsJson, now, userId]
-      );
+// User Goals
+// ----------
+// Get goals for a user
+app.get('/api/user_goals', (req, res) => {
+  const userId = req.query.user_id || 1;
+  
+  const db = getDb();
+  db.get(
+    'SELECT * FROM user_goals WHERE user_id = ?',
+    [userId],
+    (err, row) => {
+      if (err) {
+        console.error('Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        return;
+      }
       
-      // Get updated goals
-      const updatedGoals = await db.get('SELECT * FROM user_goals WHERE user_id = ?', [userId]);
-      
-      // Parse additionalGoals for response
-      if (updatedGoals.additionalGoals) {
+      // Parse additionalGoals JSON if it exists
+      if (row && row.additionalGoals) {
         try {
-          updatedGoals.additionalGoals = JSON.parse(updatedGoals.additionalGoals);
+          row.additionalGoals = JSON.parse(row.additionalGoals);
         } catch (e) {
-          updatedGoals.additionalGoals = [];
+          console.error('Error parsing additionalGoals JSON:', e);
+          row.additionalGoals = [];
         }
       }
       
-      res.json(updatedGoals);
-    } else {
-      // Create new goals
-      const result = await db.run(
-        `INSERT INTO user_goals 
-         (user_id, targetWeight, stepSize, weight_unit, additionalGoals, created_at, updated_at) 
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [userId, targetWeight, stepSize || 5, weight_unit || 'lbs', additionalGoalsJson, now, now]
-      );
-      
-      res.status(201).json({
-        id: result.lastID,
-        user_id: userId,
-        targetWeight,
-        stepSize: stepSize || 5,
-        weight_unit: weight_unit || 'lbs',
-        additionalGoals: additionalGoals || [],
-        created_at: now,
-        updated_at: now
-      });
+      res.json(row || null);
     }
-  } catch (err) {
-    console.error('Error creating/updating goals:', err);
-    res.status(500).json({ error: 'Failed to create/update goals' });
-  }
+  );
+  db.close();
 });
 
-// ============== Database Browser ==============
-// Only enable in development mode
-if (process.env.NODE_ENV !== 'production') {
-  app.use('/db-browser', (req, res, next) => {
-    // Simple authentication - using a query parameter for simplicity
-    // In a real application, you'd want more secure authentication
-    const dbPassword = process.env.DB_BROWSER_PASSWORD || 'stepie-admin';
-    const providedPassword = req.query.key;
-    
-    if (providedPassword === dbPassword) {
-      next();
-    } else {
-      res.status(401).send(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Database Browser - Authentication</title>
-            <style>
-              body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                max-width: 500px;
-                margin: 0 auto;
-                padding: 2rem;
-                text-align: center;
+// Create or update goals
+app.post('/api/user_goals', (req, res) => {
+  const { user_id = 1, targetWeight, stepSize = 5, weight_unit = 'lbs', additionalGoals = [] } = req.body;
+  
+  // Convert additionalGoals to JSON string if it's an array or object
+  const additionalGoalsJson = typeof additionalGoals === 'object' 
+    ? JSON.stringify(additionalGoals) 
+    : additionalGoals;
+  
+  const db = getDb();
+  
+  // Check if a goal record already exists for this user
+  db.get(
+    'SELECT id FROM user_goals WHERE user_id = ?',
+    [user_id],
+    (err, row) => {
+      if (err) {
+        console.error('Database error:', err.message);
+        res.status(500).json({ error: err.message });
+        db.close();
+        return;
+      }
+      
+      if (row) {
+        // Update existing record
+        db.run(
+          `UPDATE user_goals SET 
+          targetWeight = ?, 
+          stepSize = ?, 
+          weight_unit = ?, 
+          additionalGoals = ?,
+          updated_at = CURRENT_TIMESTAMP
+          WHERE user_id = ?`,
+          [targetWeight, stepSize, weight_unit, additionalGoalsJson, user_id],
+          function(err) {
+            if (err) {
+              console.error('Database error:', err.message);
+              res.status(500).json({ error: err.message });
+              db.close();
+              return;
+            }
+            
+            // Return updated record
+            db.get(
+              'SELECT * FROM user_goals WHERE user_id = ?',
+              [user_id],
+              (err, updatedRow) => {
+                if (err) {
+                  console.error('Database error:', err.message);
+                  res.status(500).json({ error: err.message });
+                } else {
+                  // Parse additionalGoals JSON
+                  if (updatedRow && updatedRow.additionalGoals) {
+                    try {
+                      updatedRow.additionalGoals = JSON.parse(updatedRow.additionalGoals);
+                    } catch (e) {
+                      updatedRow.additionalGoals = [];
+                    }
+                  }
+                  res.json(updatedRow);
+                }
+                db.close();
               }
-              h1 { color: #FFA000; }
-              input, button {
-                padding: 0.5rem;
-                margin: 0.5rem;
-                width: 100%;
-                box-sizing: border-box;
+            );
+          }
+        );
+      } else {
+        // Insert new record
+        db.run(
+          `INSERT INTO user_goals (
+            user_id, targetWeight, stepSize, weight_unit, additionalGoals
+          ) VALUES (?, ?, ?, ?, ?)`,
+          [user_id, targetWeight, stepSize, weight_unit, additionalGoalsJson],
+          function(err) {
+            if (err) {
+              console.error('Database error:', err.message);
+              res.status(500).json({ error: err.message });
+              db.close();
+              return;
+            }
+            
+            // Return created record
+            db.get(
+              'SELECT * FROM user_goals WHERE id = ?',
+              [this.lastID],
+              (err, newRow) => {
+                if (err) {
+                  console.error('Database error:', err.message);
+                  res.status(500).json({ error: err.message });
+                } else {
+                  // Parse additionalGoals JSON
+                  if (newRow && newRow.additionalGoals) {
+                    try {
+                      newRow.additionalGoals = JSON.parse(newRow.additionalGoals);
+                    } catch (e) {
+                      newRow.additionalGoals = [];
+                    }
+                  }
+                  res.status(201).json(newRow);
+                }
+                db.close();
               }
-              button {
-                background-color: #FFA000;
-                color: white;
-                border: none;
-                cursor: pointer;
-              }
-            </style>
-          </head>
-          <body>
-            <h1>Database Browser</h1>
-            <form action="/db-browser/" method="get">
-              <input type="password" name="key" placeholder="Enter access key" required />
-              <button type="submit">Access Database</button>
-            </form>
-          </body>
-        </html>
-      `);
+            );
+          }
+        );
+      }
     }
-  });
-  
-  // Initialize and use the database browser
-  app.use('/db-browser', createDatabaseBrowser(db));
-  console.log('Database browser enabled at /db-browser');
-}
+  );
+});
 
-// Development static file serving for the frontend
-if (process.env.NODE_ENV !== 'production') {
-  // Serve the frontend build for all other routes
-  app.use(express.static(path.join(__dirname, '../dist')));
-  
-  // Serve index.html for any other requests to support client-side routing
+// Catch-all route to serve the React app in production
+if (process.env.NODE_ENV === 'production') {
   app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../dist/index.html'));
   });
 }
 
 // Start the server
-initializeDatabase().then(() => {
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`API available at http://localhost:${PORT}/api`);
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`Database browser available at http://localhost:${PORT}/db-browser?key=stepie-admin`);
-    }
-  });
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  
+  // Initialize database if it doesn't exist
+  if (!fs.existsSync(DB_PATH)) {
+    console.log('Database file not found. Initializing...');
+    initDatabase();
+  }
 });

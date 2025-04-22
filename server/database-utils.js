@@ -1,186 +1,222 @@
-// database-utils.js - Helper functions for managing the SQLite database
+// database-utils.js - Database management utilities
 const sqlite3 = require('sqlite3').verbose();
-const { open } = require('sqlite');
 const path = require('path');
+const fs = require('fs');
+const readline = require('readline');
 
-// Helper function to connect to the database
-async function openDatabase() {
-  return open({
-    filename: path.resolve(__dirname, 'stepie.db'),
-    driver: sqlite3.Database
+// Database path
+const DB_PATH = path.join(__dirname, 'stepie.db');
+
+// Create interface for command line input
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+});
+
+// Initialize database with schema
+function initDatabase() {
+  console.log('Initializing database...');
+  
+  // Read SQL from init-database.sql
+  const initSql = fs.readFileSync(path.join(__dirname, 'init-database.sql'), 'utf8');
+  
+  // Connect to database (will create if doesn't exist)
+  const db = new sqlite3.Database(DB_PATH);
+  
+  // Run initialization SQL
+  db.exec(initSql, (err) => {
+    if (err) {
+      console.error('Error initializing database:', err.message);
+    } else {
+      console.log('Database initialized successfully!');
+    }
+    
+    // Close database connection
+    db.close();
   });
 }
 
-// Reset the database (WARNING: destroys all data!)
-async function resetDatabase() {
-  try {
-    const db = await openDatabase();
-    
-    // Drop tables if they exist
-    await db.exec(`
-      DROP TABLE IF EXISTS weight_entries;
-      DROP TABLE IF EXISTS user_goals;
-      DROP TABLE IF EXISTS users;
-    `);
-    
-    console.log('Tables dropped successfully');
-    
-    // Recreate tables
-    await db.exec(`
-      CREATE TABLE users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL,
-        email TEXT UNIQUE,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE weight_entries (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        weight REAL NOT NULL,
-        date TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users (id)
-      );
-
-      CREATE TABLE user_goals (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        targetWeight REAL,
-        stepSize INTEGER DEFAULT 5,
-        weight_unit TEXT DEFAULT 'lbs',
-        additionalGoals TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users (id)
-      );
-    `);
-    
-    console.log('Tables recreated successfully');
-    
-    // Insert default user
-    await db.run('INSERT INTO users (username) VALUES (?)', ['default_user']);
-    console.log('Default user created');
-    
-    await db.close();
-    console.log('Database reset complete');
-  } catch (error) {
-    console.error('Error resetting database:', error);
-  }
-}
-
 // Seed the database with sample data
-async function seedDatabase() {
-  try {
-    const db = await openDatabase();
-    
-    // Check if default user exists, create if not
-    const user = await db.get('SELECT id FROM users WHERE id = 1');
-    if (!user) {
-      await db.run('INSERT INTO users (id, username) VALUES (?, ?)', [1, 'default_user']);
-      console.log('Created default user');
-    }
-    
-    // Create sample weight entries for a 3-month period
-    const entries = [];
-    const startWeight = 210;
-    const endWeight = 185;
-    const days = 90;
-    const today = new Date();
-    
-    for (let i = days; i >= 0; i -= 3) {
-      const entryDate = new Date();
-      entryDate.setDate(today.getDate() - i);
-      
-      const progress = 1 - (i / days);
-      const exactWeight = startWeight - ((startWeight - endWeight) * progress);
-      const weight = Math.round(exactWeight + (Math.random() * 2 - 1) * 1.5);
-      
-      entries.push({
-        date: entryDate.toISOString().slice(0, 10),
-        weight
-      });
-    }
-    
-    // Insert sample weight entries
-    for (const entry of entries) {
-      await db.run(
-        'INSERT INTO weight_entries (user_id, weight, date) VALUES (?, ?, ?)',
-        [1, entry.weight, entry.date]
-      );
-    }
-    console.log(`Added ${entries.length} sample weight entries`);
-    
-    // Add sample goals
-    const goalsExist = await db.get('SELECT id FROM user_goals WHERE user_id = 1');
-    if (!goalsExist) {
-      await db.run(
-        'INSERT INTO user_goals (user_id, targetWeight, stepSize, weight_unit) VALUES (?, ?, ?, ?)',
-        [1, 175, 5, 'lbs']
-      );
-      console.log('Added sample user goals');
-    }
-    
-    await db.close();
-    console.log('Database seeding complete');
-  } catch (error) {
-    console.error('Error seeding database:', error);
-  }
-}
-
-// Display database status
-async function displayDatabaseStatus() {
-  try {
-    const db = await openDatabase();
-    
-    // Check users
-    const users = await db.all('SELECT * FROM users');
-    console.log(`Users (${users.length}):`);
-    console.table(users);
-    
-    // Check weight entries
-    const entries = await db.all('SELECT * FROM weight_entries ORDER BY date');
-    console.log(`Weight Entries (${entries.length}):`);
-    console.table(entries.slice(0, 5)); // Show first 5 entries
-    if (entries.length > 5) {
-      console.log(`... and ${entries.length - 5} more entries`);
-    }
-    
-    // Check goals
-    const goals = await db.all('SELECT * FROM user_goals');
-    console.log(`User Goals (${goals.length}):`);
-    console.table(goals);
-    
-    await db.close();
-  } catch (error) {
-    console.error('Error displaying database status:', error);
-  }
-}
-
-// Export functions
-module.exports = {
-  openDatabase,
-  resetDatabase,
-  seedDatabase,
-  displayDatabaseStatus,
-};
-
-// If this script is run directly (node database-utils.js <command>)
-if (require.main === module) {
-  const command = process.argv[2];
+function seedDatabase() {
+  console.log('Seeding database with sample data...');
   
-  if (command === 'reset') {
-    resetDatabase();
-  } else if (command === 'seed') {
-    seedDatabase();
-  } else if (command === 'status') {
-    displayDatabaseStatus();
-  } else {
-    console.log('Available commands:');
-    console.log('- reset: Reset the database (WARNING: Destroys all data!)');
-    console.log('- seed: Seed the database with sample data');
-    console.log('- status: Display database status');
+  const db = new sqlite3.Database(DB_PATH);
+  
+  // Begin transaction
+  db.serialize(() => {
+    db.run('BEGIN TRANSACTION');
+    
+    // Check if default user exists
+    db.get('SELECT id FROM users WHERE id = 1', (err, row) => {
+      if (err) {
+        console.error('Error checking for default user:', err.message);
+        db.run('ROLLBACK');
+        db.close();
+        return;
+      }
+      
+      // If no default user, create one
+      if (!row) {
+        db.run('INSERT INTO users (id, username, email) VALUES (1, "default_user", "user@example.com")');
+      }
+      
+      // Generate sample weight data (losing weight pattern over 3 months)
+      const startWeight = 210;
+      const endWeight = 185;
+      const days = 90;
+      const weightChange = startWeight - endWeight;
+      
+      // Clear existing weight entries for user 1
+      db.run('DELETE FROM weight_entries WHERE user_id = 1', function(err) {
+        if (err) {
+          console.error('Error clearing existing weight entries:', err.message);
+          db.run('ROLLBACK');
+          db.close();
+          return;
+        }
+        
+        const today = new Date();
+        const stmt = db.prepare('INSERT INTO weight_entries (user_id, weight, date) VALUES (?, ?, ?)');
+        
+        for (let i = days; i >= 0; i -= 3) { // Every 3 days
+          const entryDate = new Date();
+          entryDate.setDate(today.getDate() - i);
+          
+          // Calculate weight with randomness
+          const progress = 1 - (i / days);
+          const exactWeight = startWeight - (weightChange * progress);
+          const weight = Math.round(exactWeight + (Math.random() * 2 - 1) * 1.5);
+          
+          stmt.run(1, weight, entryDate.toISOString().slice(0, 10));
+        }
+        
+        stmt.finalize();
+        
+        // Set default goal
+        db.run(`INSERT OR REPLACE INTO user_goals 
+                (user_id, targetWeight, stepSize, weight_unit) 
+                VALUES (1, 175, 5, 'lbs')`, function(err) {
+          if (err) {
+            console.error('Error setting default goal:', err.message);
+            db.run('ROLLBACK');
+          } else {
+            db.run('COMMIT');
+            console.log('Database seeded successfully with sample data!');
+          }
+          
+          db.close();
+        });
+      });
+    });
+  });
+}
+
+// Show database status
+function showStatus() {
+  console.log('Database status:');
+  
+  const db = new sqlite3.Database(DB_PATH);
+  
+  db.serialize(() => {
+    // Check if database exists
+    if (!fs.existsSync(DB_PATH)) {
+      console.log('Database file does not exist.');
+      return;
+    }
+    
+    // Check tables
+    db.all("SELECT name FROM sqlite_master WHERE type='table'", (err, tables) => {
+      if (err) {
+        console.error('Error checking tables:', err.message);
+        return;
+      }
+      
+      console.log('Tables in database:', tables.map(t => t.name).join(', '));
+      
+      // Count rows in each table
+      tables.forEach(table => {
+        if (table.name.startsWith('sqlite_')) return; // Skip SQLite internal tables
+        
+        db.get(`SELECT COUNT(*) as count FROM ${table.name}`, (err, result) => {
+          if (err) {
+            console.error(`Error counting rows in ${table.name}:`, err.message);
+          } else {
+            console.log(`- ${table.name}: ${result.count} rows`);
+          }
+        });
+      });
+    });
+  });
+  
+  // Don't close immediately to allow async operations to complete
+  setTimeout(() => {
+    db.close();
+    process.exit(0);
+  }, 1000);
+}
+
+// Reset database (drop all and reinitialize)
+function resetDatabase() {
+  rl.question('WARNING: This will delete all data. Are you sure? (y/N) ', (answer) => {
+    if (answer.toLowerCase() === 'y') {
+      console.log('Resetting database...');
+      
+      // Delete the database file if it exists
+      if (fs.existsSync(DB_PATH)) {
+        fs.unlinkSync(DB_PATH);
+        console.log('Database file deleted.');
+      }
+      
+      // Reinitialize the database
+      initDatabase();
+    } else {
+      console.log('Database reset cancelled.');
+    }
+    
+    rl.close();
+  });
+}
+
+// Main function to handle command line arguments
+function main() {
+  const args = process.argv.slice(2);
+  const command = args[0];
+  
+  switch(command) {
+    case 'init':
+      initDatabase();
+      break;
+    case 'seed':
+      seedDatabase();
+      break;
+    case 'status':
+      showStatus();
+      break;
+    case 'reset':
+      resetDatabase();
+      break;
+    default:
+      console.log(`
+Usage: node database-utils.js <command>
+
+Commands:
+  init    - Initialize the database with schema
+  seed    - Add sample data to the database
+  status  - Show database status and counts
+  reset   - Delete and reinitialize the database (WARNING: deletes all data)
+      `);
+      process.exit(0);
   }
 }
+
+// Run the main function if this script is executed directly
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  initDatabase,
+  seedDatabase,
+  resetDatabase,
+  showStatus
+};
