@@ -1,239 +1,112 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 
 const ActivityHeatmap = ({ weightEntries = [], dietEntries = [], workoutEntries = [] }) => {
-  // Month column distribution following GitHub's pattern
-  const monthData = [
-    { name: 'Jan', columns: 4 }, { name: 'Feb', columns: 4 }, { name: 'Mar', columns: 5 },
-    { name: 'Apr', columns: 5 }, { name: 'May', columns: 4 }, { name: 'Jun', columns: 5 },
-    { name: 'Jul', columns: 4 }, { name: 'Aug', columns: 4 }, { name: 'Sep', columns: 5 },
-    { name: 'Oct', columns: 4 }, { name: 'Nov', columns: 4 }, { name: 'Dec', columns: 5 }
-  ];
+  // Helper: normalize any ISO datetime or raw date string to 'YYYY-MM-DD' by splitting off the time portion.
+  // IMPORTANT: Avoid using toISOString() on local dates (which converts to UTC and may shift the day backward!).
+  const getDateKey = dateStr => dateStr?.split('T')[0] || null;
 
-  // Day labels with empty slots between main labels (GitHub style)
-  const weekdayLabels = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
-
-  // Process all entries to generate heatmap data
+  // Build heatmapData for the past year, keyed by 'YYYY-MM-DD'
   const heatmapData = useMemo(() => {
-    // Initialize empty activity data structure
     const activityData = {};
+    const today = new Date(); today.setHours(0,0,0,0);
+    const start = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate()); start.setHours(0,0,0,0);
 
-    // Get current date and set to midnight local time
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const currentYear = today.getFullYear();
-
-    // Create date range - we'll show a full year of data ending today (midnight)
-    const endDate = today;
-    const startDate = new Date(currentYear - 1, today.getMonth(), today.getDate());
-    startDate.setHours(0, 0, 0, 0); // Also set start date to midnight
-
-    // For each day in our range, initialize with 0 activity
-    let loopDate = new Date(startDate);
-    while (loopDate <= endDate) {
-      const dateKey = loopDate.toISOString().slice(0, 10);
-      activityData[dateKey] = {
-        count: 0,
-        types: { weight: 0, diet: 0, workout: 0 },
-        intensity: 0
-      };
-      loopDate.setDate(loopDate.getDate() + 1);
+    // Initialize every day in the range with zero counts
+    for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
+      const y = d.getFullYear(), m = d.getMonth() + 1, dd = d.getDate();
+      const key = `${y}-${String(m).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+      activityData[key] = { count: 0, types: { weight: 0, diet: 0, workout: 0 }, intensity: 0 };
     }
 
-    // --- Process Entries with Consistent Date Parsing ---
-    weightEntries.forEach(entry => {
-      const entryDate = new Date(entry.date + 'T00:00:00');
-      const dateKey = entryDate.toISOString().slice(0, 10);
-      if (dateKey in activityData) {
-        activityData[dateKey].count += 1;
-        activityData[dateKey].types.weight += 1;
-      }
-    });
-
-    dietEntries.forEach(entry => {
-      const entryDate = new Date(entry.date + 'T00:00:00');
-      const dateKey = entryDate.toISOString().slice(0, 10);
-      if (dateKey in activityData) {
-        activityData[dateKey].count += 1;
-        activityData[dateKey].types.diet += 1;
-      }
-    });
-
-    workoutEntries.forEach(entry => {
-      const entryDate = new Date(entry.date + 'T00:00:00');
-      const dateKey = entryDate.toISOString().slice(0, 10);
-
-      const problematicDate = 'YYYY-MM-DD'; // <--- REPLACE with actual date string (e.g., '2024-04-22')
-
-      if (entry.date === problematicDate) {
-        console.log(`[heatmapData Debug] Processing workout entry: date=${entry.date}`, entry);
-        console.log(`[heatmapData Debug] Parsed Date: ${entryDate}, DateKey: ${dateKey}`);
-      }
-
-      if (dateKey in activityData) {
-        activityData[dateKey].count += 1;
-        activityData[dateKey].types.workout += 1;
-
-        // *** CORRECTED LOG INSIDE LOOP ***
-        if (entry.date === problematicDate) {
-          // Log the current state of this specific dateKey after adding the entry
-          console.log(`[heatmapData Debug] Added to activityData for key ${dateKey}:`, activityData[dateKey]);
+    // Increment counts per entry type using the safe getDateKey
+    [[weightEntries,'weight'], [dietEntries,'diet'], [workoutEntries,'workout']]
+      .forEach(([entries, type]) => entries.forEach(e => {
+        const key = getDateKey(e.date);
+        if (activityData[key]) {
+          activityData[key].count++;
+          activityData[key].types[type]++;
         }
-        // *** END CORRECTION ***
+      }));
 
-      } else {
-        if (entry.date === problematicDate) {
-          console.log(`[heatmapData Debug] SKIPPED workout entry, dateKey ${dateKey} not in range or activityData map.`);
-        }
-      }
-    });
-
-    const problematicDateForFinalCheck = 'YYYY-MM-DD'; // <--- REPLACE with actual date string
-    // Correct final check log using 'activityData'
-    console.log(`[heatmapData Debug] Final check for key ${problematicDateForFinalCheck} in activityData map:`, activityData[problematicDateForFinalCheck]);
-
-
-    // Calculate intensity levels (0-4)
-    Object.keys(activityData).forEach(dateKey => {
-      const count = activityData[dateKey].count;
-      if (count === 0) activityData[dateKey].intensity = 0;
-      else if (count === 1) activityData[dateKey].intensity = 1;
-      else if (count === 2) activityData[dateKey].intensity = 2;
-      else if (count === 3) activityData[dateKey].intensity = 3;
-      else activityData[dateKey].intensity = 4; // 4 or more
+    // Bucket into intensity levels
+    Object.values(activityData).forEach(day => {
+      const c = day.count;
+      day.intensity = c >= 4 ? 4 : c;
     });
 
     return activityData;
   }, [weightEntries, dietEntries, workoutEntries]);
 
-  // --- Helper Functions ---
-  const getWeekNumber = (date) => {
-    const target = new Date(date.valueOf());
-    const dayNr = (date.getDay() + 6) % 7;
-    target.setDate(target.getDate() - dayNr + 3);
-    const firstThursday = new Date(target.getFullYear(), 0, 4);
-    const weekNum = 1 + Math.ceil((target.getTime() - firstThursday.getTime()) / 604800000); // Use getTime() for subtraction
-    return weekNum;
+  // Debug: inspect the computed data structure
+  useEffect(() => console.log('[Heatmap] data:', heatmapData), [heatmapData]);
+
+  // ISO week number helper
+  const getWeekNumber = date => {
+    const t = new Date(date);
+    const day = (t.getDay() + 6) % 7;
+    t.setDate(t.getDate() - day + 3);
+    const firstThu = new Date(t.getFullYear(), 0, 4);
+    return 1 + Math.round((t - firstThu) / 604800000);
   };
 
-  const getCellColor = (intensity) => {
-    switch(intensity) {
-      case 0: return '#EEEEEE';
-      case 1: return 'rgba(255, 160, 0, 0.3)';
-      case 2: return 'rgba(255, 160, 0, 0.5)';
-      case 3: return 'rgba(255, 160, 0, 0.7)';
-      case 4: return 'rgba(255, 160, 0, 0.9)';
-      default: return '#EEEEEE';
-    }
-  };
-
-  const getTooltipText = (dateKey, activity) => {
-     if (!activity || !dateKey) return 'No data';
-     const date = new Date(dateKey + 'T00:00:00');
-     if (isNaN(date.getTime())) return 'Invalid date';
-
-     const formattedDate = date.toLocaleDateString('en-US', {
-       weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-     });
-     const { count, types } = activity;
-     if (count === 0) return `No activity on ${formattedDate}`;
-
-     let tooltipLines = [`${count} ${count === 1 ? 'entry' : 'entries'} on ${formattedDate}:`];
-     if (types.weight > 0) tooltipLines.push(`• ${types.weight} weight ${types.weight === 1 ? 'entry' : 'entries'}`);
-     if (types.diet > 0) tooltipLines.push(`• ${types.diet} diet ${types.diet === 1 ? 'entry' : 'entries'}`);
-     if (types.workout > 0) tooltipLines.push(`• ${types.workout} workout ${types.workout === 1 ? 'entry' : 'entries'}`);
-     return tooltipLines.join('\n');
-   };
-
-  // Prepare cells data for rendering the grid structure
+  // Build an array of week columns mapping to up to 7 days each
   const heatmapCells = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const startDate = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
-    startDate.setHours(0, 0, 0, 0);
+    const today = new Date(); today.setHours(0,0,0,0);
+    const start = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate()); start.setHours(0,0,0,0);
+    const weeks = {};
 
-    const dates = [];
-    let loopDate = new Date(startDate);
-    while (loopDate <= today) {
-      dates.push(new Date(loopDate));
-      loopDate.setDate(loopDate.getDate() + 1);
+    for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
+      let w = getWeekNumber(d), wy = d.getFullYear();
+      if (d.getMonth() === 11 && w === 1) wy++;
+      if (d.getMonth() === 0 && w > 50) wy--;
+      const key = `${wy}-W${String(w).padStart(2,'0')}`;
+      if (!weeks[key]) weeks[key] = Array(7).fill(null);
+      weeks[key][(d.getDay() + 6) % 7] = new Date(d);
     }
 
-    const weeks = {};
-    dates.forEach(date => {
-      const year = date.getFullYear();
-      const weekNum = getWeekNumber(date);
-      let weekYear = year;
-      if (date.getMonth() === 11 && weekNum === 1) weekYear = year + 1;
-      else if (date.getMonth() === 0 && weekNum > 50) weekYear = year - 1;
-      const weekKey = `${weekYear}-W${String(weekNum).padStart(2, '0')}`;
+    return Object.keys(weeks).sort().map(k => ({ weekKey: k, days: weeks[k] }));
+  }, [heatmapData]);
 
-      if (!weeks[weekKey]) weeks[weekKey] = Array(7).fill(null);
-      const dayOfWeek = (date.getDay() + 6) % 7; // Mon=0, Sun=6
-      weeks[weekKey][dayOfWeek] = date;
-    });
+  const cellSize = 13, cellGap = 2;
+  const colors = ['#EEEEEE','rgba(255,160,0,0.3)','rgba(255,160,0,0.5)','rgba(255,160,0,0.7)','rgba(255,160,0,0.9)'];
 
-    const sortedWeekKeys = Object.keys(weeks).sort();
-    return sortedWeekKeys.map(weekKey => ({ weekKey, filledDates: weeks[weekKey] }));
-  }, []);
+  // Format month labels so they align with the first week cell of each month
+  const formatMonth = date => date.toLocaleString('en-US', { month: 'short' });
 
-  // --- Render Logic ---
   return (
-    <div style={{ backgroundColor: 'white', borderRadius: '0.5rem', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)', padding: '1rem', marginBottom: '1rem', overflow: 'hidden' }}>
-      {/* Month Headers */}
-      <div style={{ display: 'flex', paddingLeft: '39px', marginBottom: '2px' }}>
-        {monthData.map((month, idx) => ( // This is still approximate positioning
-          <div key={idx} style={{ width: `${(month.columns / 53) * 100}%`, color: 'var(--text-secondary)', fontSize: '0.75rem', fontWeight: '500', textAlign: 'left' }}>
-            {month.name}
-          </div>
-        ))}
+    <div style={{ backgroundColor:'#fff', padding:'1rem', borderRadius:8, boxShadow:'0 1px 3px rgba(0,0,0,0.1)' }}>
+      {/* Month headers: show label only when month changes from the previous week */}
+      <div style={{ display:'flex', paddingLeft:`${cellSize + cellGap}px`, marginBottom:4 }}>
+        {heatmapCells.map(({ days }, i) => {
+          const firstDate = days.find(Boolean);
+          const prevMonth = i > 0 && heatmapCells[i - 1].days.find(Boolean)?.getMonth();
+          const thisMonth = firstDate?.getMonth();
+          return (
+            <div key={i} style={{ width:cellSize, marginRight:cellGap, textAlign:'center', fontSize:12, color:'#666' }}>
+              {thisMonth !== prevMonth && firstDate ? formatMonth(firstDate) : ''}
+            </div>
+          );
+        })}
       </div>
 
-      <div style={{ display: 'flex', marginTop: '4px' }}>
-        {/* Day Labels */}
-        <div style={{ width: '35px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', paddingRight: '4px', fontSize: '0.7rem', color: 'var(--text-secondary)' }}>
-          {weekdayLabels.map((day, index) => (
-            <div key={index} style={{ height: '13px', marginBottom: '2px', textAlign: 'right' }}>
-              {day}
-            </div>
-          ))}
+      <div style={{ display:'flex' }}>
+        {/* Weekday labels */}
+        <div style={{ width:cellSize+cellGap, display:'flex', flexDirection:'column', justifyContent:'space-between', paddingRight:4, fontSize:10, color:'#666' }}>
+          {['','Mon','','Wed','','Fri',''].map((lbl, idx) => <div key={idx} style={{ height:cellSize }}>{lbl}</div>)}
         </div>
 
-        {/* Heatmap Grid */}
-        <div style={{ display: 'flex', width: 'calc(100% - 35px)', gap: '2px' }}>
-          {heatmapCells.map(({ weekKey, filledDates }) => (
-            <div key={weekKey} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              {filledDates.map((date, rowIdx) => {
-                const dateKey = date ? date.toISOString().slice(0, 10) : null;
-                const activity = dateKey ? heatmapData[dateKey] : null;
-                const intensity = activity ? activity.intensity : 0;
-
-                const problematicDate = 'YYYY-MM-DD'; // <--- REPLACE with actual date string (e.g., '2024-04-22')
-                const checkYear = '2024'; // <--- ADJUST YEAR IF NEEDED
-
-                if (dateKey === problematicDate) {
-                   console.log(`[Render Debug] Rendering EXPECTED cell: weekKey=${weekKey}, rowIdx=${rowIdx} (0=Mon), date=${date ? date.toDateString() : 'null'}, dateKey=${dateKey}, activity=`, activity);
-                }
-                if (dateKey && dateKey.startsWith(`${checkYear}-12`)) { // Check December specifically
-                   console.log(`[Render Debug] Rendering Dec Cell: weekKey=${weekKey}, rowIdx=${rowIdx} (0=Mon), date=${date ? date.toDateString() : 'null'}, dateKey=${dateKey}, activity=`, activity);
-                   // Check if this Dec cell contains the problematic workout
-                   if (activity && activity.types.workout > 0 && activityData[problematicDate]?.types.workout > 0 && dateKey !== problematicDate) {
-                      console.warn(`[Render Debug] Mismatched workout! Dec cell ${dateKey} has workout, but should be on ${problematicDate}`, activity);
-                   }
-                }
-                 if (dateKey && dateKey.startsWith(`${checkYear}-11`)) { // Check November specifically
-                   console.log(`[Render Debug] Rendering Nov Cell: weekKey=${weekKey}, rowIdx=${rowIdx} (0=Mon), date=${date ? date.toDateString() : 'null'}, dateKey=${dateKey}, activity=`, activity);
-                    // Check if this Nov cell contains the problematic workout
-                    if (activity && activity.types.workout > 0 && activityData[problematicDate]?.types.workout > 0 && dateKey !== problematicDate) {
-                      console.warn(`[Render Debug] Mismatched workout! Nov cell ${dateKey} has workout, but should be on ${problematicDate}`, activity);
-                   }
-                }
-
-
+        {/* Heatmap grid */}
+        <div style={{ display:'flex' }}>
+          {heatmapCells.map(({ weekKey, days }) => (
+            <div key={weekKey} style={{ display:'flex', flexDirection:'column', gap:cellGap, marginRight:cellGap }}>
+              {days.map((d, idx) => {
+                const key = d ? getDateKey(d.toISOString()) : null;
+                const intensity = d ? heatmapData[key]?.intensity ?? 0 : 0;
                 return (
                   <div
-                    key={rowIdx}
-                    title={getTooltipText(dateKey, activity)}
-                    style={{ width: '13px', height: '13px', borderRadius: '2px', backgroundColor: getCellColor(intensity), cursor: activity && activity.count > 0 ? 'pointer' : 'default' }}
+                    key={idx}
+                    title={d ? `${heatmapData[key].count} entries on ${d.toLocaleDateString()}` : ''}
+                    style={{ width:cellSize, height:cellSize, borderRadius:2, backgroundColor: d ? colors[intensity] : 'transparent' }}
                   />
                 );
               })}
@@ -243,20 +116,10 @@ const ActivityHeatmap = ({ weightEntries = [], dietEntries = [], workoutEntries 
       </div>
 
       {/* Legend */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginTop: '8px', gap: '4px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+      <div style={{ marginTop:8, display:'flex', alignItems:'center', justifyContent:'flex-end', gap:4, fontSize:12, color:'#666' }}>
         <span>Less</span>
-        {[0, 1, 2, 3, 4].map((intensity) => (
-          <div key={intensity} style={{ width: '10px', height: '10px', borderRadius: '2px', backgroundColor: getCellColor(intensity) }} />
-        ))}
+        {colors.map((c, i) => <div key={i} style={{ width:10, height:10, backgroundColor:c, borderRadius:2 }} />)}
         <span>More</span>
-      </div>
-
-      {/* Entry Type Indicators */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', marginTop: '8px', gap: '12px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <span style={{ width: 10, height: 10, backgroundColor: 'rgba(255, 160, 0, 0.3)', borderRadius: 2, display: 'inline-block' }}></span>
-          <span>Activity Recorded</span>
-        </div>
       </div>
     </div>
   );
