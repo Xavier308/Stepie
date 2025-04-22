@@ -49,3 +49,40 @@ INSERT INTO users (username, email) VALUES ('default_user', 'user@example.com');
 -- Insert a default goal for the user
 INSERT INTO user_goals (user_id, targetWeight, stepSize, weight_unit) 
 VALUES (1, NULL, 5, 'lbs');
+
+-- Create diet_entries table
+CREATE TABLE IF NOT EXISTS diet_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  date TEXT NOT NULL,
+  meal_type TEXT NOT NULL,
+  food_item TEXT NOT NULL,
+  calories INTEGER NOT NULL,
+  protein INTEGER DEFAULT 0,
+  carbs INTEGER DEFAULT 0,
+  fat INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- Create workout_entries table
+CREATE TABLE IF NOT EXISTS workout_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  date TEXT NOT NULL,
+  workout_type TEXT NOT NULL,
+  duration INTEGER NOT NULL,
+  intensity TEXT NOT NULL,
+  calories_burned INTEGER DEFAULT 0,
+  notes TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- Create indexes for faster lookups
+CREATE INDEX IF NOT EXISTS idx_diet_entries_user_id ON diet_entries(user_id);
+CREATE INDEX IF NOT EXISTS idx_diet_entries_date ON diet_entries(date);
+CREATE INDEX IF NOT EXISTS idx_workout_entries_user_id ON workout_entries(user_id);
+CREATE INDEX IF NOT EXISTS idx_workout_entries_date ON workout_entries(date);

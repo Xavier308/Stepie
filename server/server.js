@@ -307,6 +307,148 @@ app.post('/api/user_goals', (req, res) => {
   );
 });
 
+// Diet Entries Routes
+app.get('/api/diet_entries', async (req, res) => {
+    try {
+      const { user_id, start_date, end_date } = req.query;
+      let query = 'SELECT * FROM diet_entries WHERE user_id = ?';
+      let params = [user_id];
+      
+      if (start_date && end_date) {
+        query += ' AND date BETWEEN ? AND ?';
+        params.push(start_date, end_date);
+      }
+      
+      query += ' ORDER BY date DESC';
+      
+      const entries = await db.all(query, params);
+      res.json(entries);
+    } catch (err) {
+      console.error('Error fetching diet entries:', err);
+      res.status(500).json({ message: 'Failed to fetch diet entries' });
+    }
+  });
+  
+  app.post('/api/diet_entries', async (req, res) => {
+    try {
+      const { user_id, date, mealType, foodItem, calories, protein, carbs, fat } = req.body;
+      
+      const result = await db.run(
+        `INSERT INTO diet_entries (user_id, date, meal_type, food_item, calories, protein, carbs, fat) 
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [user_id, date, mealType, foodItem, calories, protein || 0, carbs || 0, fat || 0]
+      );
+      
+      const newEntry = await db.get('SELECT * FROM diet_entries WHERE id = ?', [result.lastID]);
+      res.status(201).json(newEntry);
+    } catch (err) {
+      console.error('Error adding diet entry:', err);
+      res.status(500).json({ message: 'Failed to add diet entry' });
+    }
+  });
+  
+  app.put('/api/diet_entries/:id', async (req, res) => {
+    try {
+      const id = req.params.id;
+      const { mealType, foodItem, calories, protein, carbs, fat, date } = req.body;
+      
+      await db.run(
+        `UPDATE diet_entries SET 
+         meal_type = ?, food_item = ?, calories = ?, protein = ?, carbs = ?, fat = ?, date = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [mealType, foodItem, calories, protein || 0, carbs || 0, fat || 0, date, id]
+      );
+      
+      const updatedEntry = await db.get('SELECT * FROM diet_entries WHERE id = ?', [id]);
+      res.json(updatedEntry);
+    } catch (err) {
+      console.error('Error updating diet entry:', err);
+      res.status(500).json({ message: 'Failed to update diet entry' });
+    }
+  });
+  
+  app.delete('/api/diet_entries/:id', async (req, res) => {
+    try {
+      const id = req.params.id;
+      await db.run('DELETE FROM diet_entries WHERE id = ?', [id]);
+      res.status(204).send();
+    } catch (err) {
+      console.error('Error deleting diet entry:', err);
+      res.status(500).json({ message: 'Failed to delete diet entry' });
+    }
+  });
+  
+  // Workout Entries Routes
+  app.get('/api/workout_entries', async (req, res) => {
+    try {
+      const { user_id, start_date, end_date } = req.query;
+      let query = 'SELECT * FROM workout_entries WHERE user_id = ?';
+      let params = [user_id];
+      
+      if (start_date && end_date) {
+        query += ' AND date BETWEEN ? AND ?';
+        params.push(start_date, end_date);
+      }
+      
+      query += ' ORDER BY date DESC';
+      
+      const entries = await db.all(query, params);
+      res.json(entries);
+    } catch (err) {
+      console.error('Error fetching workout entries:', err);
+      res.status(500).json({ message: 'Failed to fetch workout entries' });
+    }
+  });
+  
+  app.post('/api/workout_entries', async (req, res) => {
+    try {
+      const { user_id, date, workoutType, duration, intensity, caloriesBurned, notes } = req.body;
+      
+      const result = await db.run(
+        `INSERT INTO workout_entries (user_id, date, workout_type, duration, intensity, calories_burned, notes) 
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [user_id, date, workoutType, duration, intensity, caloriesBurned || 0, notes || '']
+      );
+      
+      const newEntry = await db.get('SELECT * FROM workout_entries WHERE id = ?', [result.lastID]);
+      res.status(201).json(newEntry);
+    } catch (err) {
+      console.error('Error adding workout entry:', err);
+      res.status(500).json({ message: 'Failed to add workout entry' });
+    }
+  });
+  
+  app.put('/api/workout_entries/:id', async (req, res) => {
+    try {
+      const id = req.params.id;
+      const { workoutType, duration, intensity, caloriesBurned, notes, date } = req.body;
+      
+      await db.run(
+        `UPDATE workout_entries SET 
+         workout_type = ?, duration = ?, intensity = ?, calories_burned = ?, notes = ?, date = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+        [workoutType, duration, intensity, caloriesBurned || 0, notes || '', date, id]
+      );
+      
+      const updatedEntry = await db.get('SELECT * FROM workout_entries WHERE id = ?', [id]);
+      res.json(updatedEntry);
+    } catch (err) {
+      console.error('Error updating workout entry:', err);
+      res.status(500).json({ message: 'Failed to update workout entry' });
+    }
+  });
+  
+  app.delete('/api/workout_entries/:id', async (req, res) => {
+    try {
+      const id = req.params.id;
+      await db.run('DELETE FROM workout_entries WHERE id = ?', [id]);
+      res.status(204).send();
+    } catch (err) {
+      console.error('Error deleting workout entry:', err);
+      res.status(500).json({ message: 'Failed to delete workout entry' });
+    }
+  });
+
 // Catch-all route to serve the React app in production
 if (process.env.NODE_ENV === 'production') {
   app.get('*', (req, res) => {
