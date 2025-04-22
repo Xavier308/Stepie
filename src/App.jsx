@@ -1,6 +1,8 @@
-// App.jsx with proper database initialization
+// App.jsx with proper database initialization and new features
 import React, { useState, useEffect } from 'react';
 import WeightChart from './components/WeightChart';
+import ActivityHeatmap from './components/ActivityHeatmap';
+import AddEntryModal from './components/AddEntryModal';
 import apiService from './services/apiService';
 import InitialSetupFlow from './components/InitialSetupFlow';
 import './index.css'; 
@@ -8,6 +10,8 @@ import './index.css';
 function App() {
   // State for data
   const [weightEntries, setWeightEntries] = useState([]);
+  const [dietEntries, setDietEntries] = useState([]);
+  const [workoutEntries, setWorkoutEntries] = useState([]);
   const [goals, setGoals] = useState({
     targetWeight: null,
     stepSize: 5,
@@ -19,14 +23,23 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newWeight, setNewWeight] = useState('');
-  const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10));
+  const [showSuccessMessage, setShowSuccessMessage] = useState('');
   const [needsInitialSetup, setNeedsInitialSetup] = useState(false);
 
   // Fetch data on component mount
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Show success message with auto-hide
+  useEffect(() => {
+    if (showSuccessMessage) {
+      const timer = setTimeout(() => {
+        setShowSuccessMessage('');
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [showSuccessMessage]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -35,6 +48,14 @@ function App() {
       // Fetch weight entries
       const fetchedWeightData = await apiService.getWeightEntries();
       setWeightEntries(fetchedWeightData.sort((a, b) => new Date(a.date) - new Date(b.date)) || []);
+
+      // Fetch diet entries
+      const fetchedDietData = await apiService.getDietEntries();
+      setDietEntries(fetchedDietData || []);
+
+      // Fetch workout entries
+      const fetchedWorkoutData = await apiService.getWorkoutEntries();
+      setWorkoutEntries(fetchedWorkoutData || []);
 
       // Fetch goal data
       const fetchedGoalData = await apiService.getGoals();
@@ -62,26 +83,42 @@ function App() {
   };
 
   // Entry handlers
-  const handleAddWeightEntry = async () => {
-    if (!newWeight) {
-      alert("Please enter a weight value");
-      return;
-    }
-    
+  const handleAddWeightEntry = async (weightData) => {
     try {
       setError(null);
-      const newEntry = {
-        weight: parseFloat(newWeight),
-        date: newDate,
-      };
-      
-      const addedEntry = await apiService.addWeightEntry(newEntry);
+      const addedEntry = await apiService.addWeightEntry(weightData);
       setWeightEntries(prev => [...prev, addedEntry].sort((a, b) => new Date(a.date) - new Date(b.date)));
       setShowAddModal(false);
-      setNewWeight('');
+      setShowSuccessMessage('Weight entry added successfully!');
     } catch (err) {
       console.error("Failed to add weight entry:", err);
       setError("Could not save weight entry.");
+    }
+  };
+
+  const handleAddDietEntry = async (dietData) => {
+    try {
+      setError(null);
+      const addedEntry = await apiService.addDietEntry(dietData);
+      setDietEntries(prev => [...prev, addedEntry]);
+      setShowAddModal(false);
+      setShowSuccessMessage('Diet entry added successfully!');
+    } catch (err) {
+      console.error("Failed to add diet entry:", err);
+      setError("Could not save diet entry.");
+    }
+  };
+
+  const handleAddWorkoutEntry = async (workoutData) => {
+    try {
+      setError(null);
+      const addedEntry = await apiService.addWorkoutEntry(workoutData);
+      setWorkoutEntries(prev => [...prev, addedEntry]);
+      setShowAddModal(false);
+      setShowSuccessMessage('Workout entry added successfully!');
+    } catch (err) {
+      console.error("Failed to add workout entry:", err);
+      setError("Could not save workout entry.");
     }
   };
 
@@ -90,26 +127,6 @@ function App() {
     setNeedsInitialSetup(false);
     fetchData(); // Refresh data after setup
   };
-
-  // Generate GitHub-style heatmap data (simplified)
-  // Month column distribution following GitHub's pattern
-  const monthData = [
-    { name: 'Jan', columns: 4 },
-    { name: 'Feb', columns: 4 },
-    { name: 'Mar', columns: 5 },
-    { name: 'Apr', columns: 5 },
-    { name: 'May', columns: 4 },
-    { name: 'Jun', columns: 5 },
-    { name: 'Jul', columns: 4 },
-    { name: 'Aug', columns: 4 },
-    { name: 'Sep', columns: 5 },
-    { name: 'Oct', columns: 4 },
-    { name: 'Nov', columns: 4 },
-    { name: 'Dec', columns: 5 }
-  ];
-
-  // Day labels with empty slots between main labels (GitHub style)
-  const weekdayLabels = ['', 'Mon', '', 'Wed', '', 'Fri', ''];
 
   // If we need initial setup, show the setup flow instead of the main app
   if (needsInitialSetup && !loading) {
@@ -165,6 +182,24 @@ function App() {
           </button>
         </header>
         
+        {/* Success Message */}
+        {showSuccessMessage && (
+          <div style={{
+            position: 'fixed',
+            top: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: 'rgba(0, 128, 0, 0.8)',
+            color: 'white',
+            padding: '0.75rem 1.25rem',
+            borderRadius: '0.375rem',
+            zIndex: 100,
+            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+          }}>
+            {showSuccessMessage}
+          </div>
+        )}
+        
         {/* Loading and Error States */}
         {loading && <p style={{ textAlign: 'center', padding: '2rem' }}>Loading your data...</p>}
         
@@ -207,7 +242,7 @@ function App() {
                   color: 'var(--primary)',
                   border: 'none'
                 }}>
-                  CLEAR THIS MONTH
+                  LAST 30 DAYS
                 </button>
               </div>
               
@@ -236,107 +271,24 @@ function App() {
               </div>
             </div>
             
-            {/* GitHub-style Activity Heatmap */}
+            {/* Activity Heatmap - Using our new component */}
             <div style={{ marginBottom: '2rem' }}>
               <h2 style={{ 
                 fontSize: '1.25rem', 
                 fontWeight: '600', 
-                marginBottom: '1.25rem', // Increased space
+                marginBottom: '1rem', 
                 color: 'var(--text)',
                 margin: 0,
               }}>
                 Activity Heatmap
               </h2>
               
-              <div style={{ 
-                backgroundColor: 'white', 
-                borderRadius: '0.5rem',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-                padding: '1rem',
-                marginBottom: '1rem', // Space between heatmap and button row
-                overflow: 'hidden'
-              }}>
-                {/* Month headers */}
-                <div style={{ display: 'flex' }}>
-                  <div style={{ width: '35px' }}></div> {/* Space for weekday labels */}
-                  <div style={{ display: 'flex', width: 'calc(100% - 35px)' }}>
-                    {monthData.map((month, idx) => (
-                      <div key={idx} style={{ 
-                        textAlign: 'center',
-                        width: `${(month.columns / 53) * 100}%`, // Width proportional to column count
-                        color: 'var(--text-secondary)',
-                        fontSize: '0.75rem',
-                        fontWeight: '500'
-                      }}>
-                        {month.name}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                
-                <div style={{ display: 'flex', marginTop: '4px' }}>
-                  {/* Day labels - GitHub style with 7 rows */}
-                  <div style={{ 
-                    width: '35px', 
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    paddingRight: '4px'
-                  }}>
-                    {weekdayLabels.map((day, index) => (
-                      <div 
-                        key={index} 
-                        style={{ 
-                          height: '13px', // Smaller, GitHub-like squares
-                          fontSize: '0.7rem',
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'flex-end',
-                          color: 'var(--text-secondary)',
-                          marginTop: index === 0 ? '0' : '2px', // Space between rows
-                          marginBottom: index === 6 ? '0' : '2px'
-                        }}
-                      >
-                        {day}
-                      </div>
-                    ))}
-                  </div>
-                  
-                  {/* GitHub-style heatmap grid */}
-                  <div style={{ display: 'flex', width: 'calc(100% - 35px)' }}>
-                    {/* Create 53 columns (52-53 weeks in a year) */}
-                    {monthData.flatMap((month, monthIdx) => 
-                      [...Array(month.columns)].map((_, colIdx) => (
-                        <div key={`${monthIdx}-${colIdx}`} style={{ 
-                          display: 'flex', 
-                          flexDirection: 'column',
-                          gap: '2px',
-                          padding: '0 1px',
-                          width: `${(1 / 53) * 100}%` // Even width for all 53 columns
-                        }}>
-                          {/* 7 rows for each day of the week */}
-                          {[...Array(7)].map((_, rowIdx) => (
-                            <div 
-                              key={rowIdx} 
-                              style={{
-                                width: '100%', 
-                                paddingBottom: '100%', // Square aspect ratio
-                                position: 'relative',
-                                borderRadius: '2px',
-                                backgroundColor: Math.random() > 0.7 
-                                  ? `rgba(255, 160, 0, ${Math.random() * 0.8 + 0.2})` 
-                                  : '#EEEEEE',
-                                marginTop: rowIdx === 0 ? '0' : '2px', // Space between rows
-                                marginBottom: rowIdx === 6 ? '0' : '2px'
-                              }}
-                            />
-                          ))}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
+              {/* Use our custom ActivityHeatmap component */}
+              <ActivityHeatmap 
+                weightEntries={weightEntries}
+                dietEntries={dietEntries}
+                workoutEntries={workoutEntries}
+              />
               
               {/* Add Button Row - Positioned below the heatmap, within app boundaries */}
               <div style={{ 
@@ -369,153 +321,14 @@ function App() {
         )}
       </div>
       
-      {/* Add Modal */}
+      {/* Add Modal - Using our updated modal component */}
       {showAddModal && (
-        <div style={{ 
-          position: 'fixed', 
-          inset: 0, 
-          backgroundColor: 'rgba(0, 0, 0, 0.5)', 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'center', 
-          zIndex: 50 
-        }}>
-          <div style={{ 
-            backgroundColor: 'white', 
-            borderRadius: '0.5rem', 
-            width: '100%', 
-            maxWidth: '400px', 
-            padding: '1.5rem', 
-            margin: '1rem',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)'
-          }}>
-            <h2 style={{ 
-              fontSize: '1.25rem', 
-              fontWeight: 'bold', 
-              marginBottom: '1.5rem',
-              color: 'var(--text)'
-            }}>
-              Add New Entry
-            </h2>
-            
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ 
-                display: 'block', 
-                fontSize: '0.875rem', 
-                fontWeight: '500', 
-                marginBottom: '0.5rem',
-                color: 'var(--text-secondary)'
-              }}>
-                Select Action
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
-                {[
-                  { id: 'weight', label: 'Weight' },
-                  { id: 'workout', label: 'Workout' },
-                  { id: 'diet', label: 'Diet' }
-                ].map((action, i) => (
-                  <button 
-                    key={action.id}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      borderRadius: '0.375rem',
-                      border: `1px solid ${i === 0 ? 'var(--primary)' : 'var(--divider)'}`,
-                      backgroundColor: i === 0 ? 'rgba(255, 160, 0, 0.1)' : 'white',
-                      color: i === 0 ? 'var(--primary)' : 'var(--text-secondary)'
-                    }}
-                  >
-                    {action.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ 
-                display: 'block', 
-                fontSize: '0.875rem', 
-                fontWeight: '500', 
-                marginBottom: '0.5rem',
-                color: 'var(--text-secondary)'
-              }}>
-                Weight
-              </label>
-              <input
-                type="number"
-                style={{
-                  width: '100%',
-                  padding: '0.75rem',
-                  borderRadius: '0.375rem',
-                  border: '1px solid var(--divider)',
-                  fontSize: '1rem'
-                }}
-                placeholder="e.g., 175"
-                value={newWeight}
-                onChange={(e) => setNewWeight(e.target.value)}
-              />
-            </div>
-            
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ 
-                display: 'block', 
-                fontSize: '0.875rem', 
-                fontWeight: '500', 
-                marginBottom: '0.5rem',
-                color: 'var(--text-secondary)'
-              }}>
-                Date
-              </label>
-              <input
-                type="date"
-                style={{
-                  width: '100%',
-                  padding: '0.75rem',
-                  borderRadius: '0.375rem',
-                  border: '1px solid var(--divider)',
-                  fontSize: '1rem'
-                }}
-                value={newDate}
-                onChange={(e) => setNewDate(e.target.value)}
-              />
-            </div>
-            
-            <div style={{ 
-              marginTop: '2rem', 
-              display: 'flex', 
-              justifyContent: 'flex-end', 
-              gap: '0.75rem' 
-            }}>
-              <button
-                style={{
-                  padding: '0.75rem 1.25rem',
-                  borderRadius: '0.375rem',
-                  color: 'var(--text-secondary)',
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  fontSize: '0.875rem',
-                  fontWeight: '500'
-                }}
-                onClick={() => setShowAddModal(false)}
-              >
-                Cancel
-              </button>
-              <button
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  borderRadius: '0.375rem',
-                  color: 'white',
-                  backgroundColor: 'var(--primary)',
-                  border: 'none',
-                  fontSize: '0.875rem',
-                  fontWeight: '500'
-                }}
-                onClick={handleAddWeightEntry}
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
+        <AddEntryModal 
+          onSaveWeight={handleAddWeightEntry}
+          onSaveDiet={handleAddDietEntry}
+          onSaveWorkout={handleAddWorkoutEntry}
+          onCancel={() => setShowAddModal(false)}
+        />
       )}
     </div>
   );

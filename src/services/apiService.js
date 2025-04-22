@@ -1,4 +1,4 @@
-// apiService.js - Updated to work properly with a fresh database
+// apiService.js - Updated to include diet and workout tracking
 import axios from 'axios';
 
 // --- Configuration ---
@@ -85,6 +85,138 @@ const apiService = {
     }
   },
 
+  // === Diet Entries ===
+  getDietEntries: async (startDate, endDate) => {
+    try {
+      const params = { 
+        user_id: CURRENT_USER_ID,
+        ...(startDate && { start_date: startDate }),
+        ...(endDate && { end_date: endDate })
+      };
+      
+      const response = await apiClient.get(`/diet_entries`, { params });
+      return response.data || [];
+    } catch (error) {
+      console.error("API Error fetching diet entries:", error.response?.data || error.message);
+      if (error.code === 'ERR_NETWORK') {
+        console.warn("Network error - server may not be running. Returning empty data.");
+        return [];
+      }
+      throw error;
+    }
+  },
+
+  addDietEntry: async (entryData) => {
+    try {
+      const payload = {
+        ...entryData,
+        user_id: CURRENT_USER_ID
+      };
+
+      const response = await apiClient.post(`/diet_entries`, payload);
+      return response.data;
+    } catch (error) {
+      console.error("API Error adding diet entry:", error.response?.data || error.message);
+      if (error.code === 'ERR_NETWORK') {
+        // For development without a server, create a mock response
+        console.warn("Network error - server may not be running. Creating mock entry.");
+        return {
+          id: Date.now(),
+          user_id: CURRENT_USER_ID,
+          ...entryData,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+      }
+      throw error;
+    }
+  },
+
+  updateDietEntry: async (id, updateData) => {
+    try {
+      const response = await apiClient.put(`/diet_entries/${id}`, updateData);
+      return response.data;
+    } catch (error) {
+      console.error("API Error updating diet entry:", error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  deleteDietEntry: async (id) => {
+    try {
+      await apiClient.delete(`/diet_entries/${id}`);
+    } catch (error) {
+      console.error("API Error deleting diet entry:", error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  // === Workout Entries ===
+  getWorkoutEntries: async (startDate, endDate) => {
+    try {
+      const params = { 
+        user_id: CURRENT_USER_ID,
+        ...(startDate && { start_date: startDate }),
+        ...(endDate && { end_date: endDate })
+      };
+      
+      const response = await apiClient.get(`/workout_entries`, { params });
+      return response.data || [];
+    } catch (error) {
+      console.error("API Error fetching workout entries:", error.response?.data || error.message);
+      if (error.code === 'ERR_NETWORK') {
+        console.warn("Network error - server may not be running. Returning empty data.");
+        return [];
+      }
+      throw error;
+    }
+  },
+
+  addWorkoutEntry: async (entryData) => {
+    try {
+      const payload = {
+        ...entryData,
+        user_id: CURRENT_USER_ID
+      };
+
+      const response = await apiClient.post(`/workout_entries`, payload);
+      return response.data;
+    } catch (error) {
+      console.error("API Error adding workout entry:", error.response?.data || error.message);
+      if (error.code === 'ERR_NETWORK') {
+        // For development without a server, create a mock response
+        console.warn("Network error - server may not be running. Creating mock entry.");
+        return {
+          id: Date.now(),
+          user_id: CURRENT_USER_ID,
+          ...entryData,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+      }
+      throw error;
+    }
+  },
+
+  updateWorkoutEntry: async (id, updateData) => {
+    try {
+      const response = await apiClient.put(`/workout_entries/${id}`, updateData);
+      return response.data;
+    } catch (error) {
+      console.error("API Error updating workout entry:", error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  deleteWorkoutEntry: async (id) => {
+    try {
+      await apiClient.delete(`/workout_entries/${id}`);
+    } catch (error) {
+      console.error("API Error deleting workout entry:", error.response?.data || error.message);
+      throw error;
+    }
+  },
+
   // === Goals ===
   getGoals: async () => {
     try {
@@ -120,8 +252,6 @@ const apiService = {
         ...goalData, 
         user_id: CURRENT_USER_ID 
       };
-
-      console.log("Updating goals with payload:", JSON.stringify(payload, null, 2));
       
       const response = await apiClient.post(`/user_goals`, payload);
       return response.data;
@@ -142,11 +272,6 @@ const apiService = {
       
       throw error;
     }
-  },
-
-  createInitialGoals: async (initialGoalData) => {
-    // This is now just an alias for updateGoals for simplicity
-    return this.updateGoals(null, initialGoalData);
   }
 };
 
