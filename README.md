@@ -63,7 +63,7 @@ stepie-app/
 
 1. **Clone the repository:**
    ```bash
-   git clone <your-repository-url>
+   git clone https://github.com/Xavier308/Stepie.git
    cd stepie-app
    ```
 
@@ -141,17 +141,6 @@ node database-utils.js seed
 # Reset the database (WARNING: Deletes all data)
 node database-utils.js reset
 ```
-
-### Migration from NoCodeBackend
-
-If you were previously using the NoCodeBackend version, you can migrate your data:
-
-```bash
-# In the server directory
-node migrate-from-nobackend.js
-```
-
-The script will prompt you for your NoCodeBackend API details and import the data into SQLite.
 
 ## 📊 Database Schema
 
